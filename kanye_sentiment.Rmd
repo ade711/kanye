@@ -1,0 +1,195 @@
+---
+title: "Sentiment Analysis of Kanye West Lyrics"
+author: "Ademola Bello"
+date: "02/09/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r global-options, include=FALSE}
+knitr::opts_chunk$set(fig.width=12, fig.height=8, warning=FALSE, message=FALSE)
+```
+
+## R Markdown
+
+```{r, echo=FALSE}
+library(dplyr)
+library(tidytext)
+library(tidyverse)
+```
+
+Sentiment Analysis is an attempt to decipher text in a human-readable format by a machine. One way of carrying out sentiment analysis is to treat text as a combination of individual words. Each word is then associated with a sentiment, the summation of these individual sentiments can then be used as the sentiment of the overall text.
+
+This approach was taken to analyse the lyrics of Hip-Hop artist Kanye West.
+
+Lets take a look at the lyrics data. Some pre-processing has already been done. For example, the lyrics have been tokenised into individual words, common stopwords have been removed and the data has been formatted into a 'tidy' form.
+
+```{r}
+tidy_lyrics_tok <- readRDS("C:/Users/ade71/Documents/R/kanye/tidy_lyrics_token.Rds")
+kw_albums <- readRDS("C:/Users/ade71/Documents/R/kanye/kw_albums.Rds")
+combo <- readRDS("C:/Users/ade71/Documents/R/kanye/nrc_bing_vocab.Rds")
+sample_n(tidy_lyrics_tok, 10)
+```
+There are 3 main lexicons for sentiment analysis bing, AFINN and nrc.
+
+```{r}
+get_sentiments('bing')
+get_sentiments('nrc')
+get_sentiments('afinn')
+```
+As you can see the nrc lexicon categorizes words in a binary fashion (“yes”/“no”) into categories of positive, negative, anger, anticipation, disgust, fear, joy, sadness, surprise, and trust. The bing lexicon categorizes words in a binary fashion into positive and negative categories. The AFINN lexicon assigns words with a score that runs between -5 and 5, with negative scores indicating negative sentiment and positive scores indicating positive sentiment.
+
+We can also observe that nrc has the biggest vocabulary of words with ~14000 words.
+
+For the sake of analysis we will try the bing lexicon.
+
+```{r}
+ye_sentiment <- tidy_lyrics_tok%>%
+  left_join(get_sentiments("bing"))%>% 
+  count(album, track_title, sentiment)%>%
+  spread(sentiment, n, fill = 0)%>%
+  mutate(sentiment = positive - negative)%>%
+  mutate(sentiment_per_word = (positive - negative)/(positive+negative))
+head(ye_sentiment)
+```
+Some of the songs have very large amounts on non matches. This means the sentiment calculation will not be representative of the song. 
+
+```{r, echo=FALSE}
+senti_data<-ye_sentiment%>%
+mutate(percent_match= (positive+negative)/(positive+negative+`<NA>`)*100)
+```
+The average value of the matches across all songs is `r mean(senti_data$percent_match)`%.
+The median value of the matches across all songs is `r median(senti_data$percent_match)`%.
+This means most of the songs have a very low match rate so we can't take this as
+representative
+
+Let's see what happens if we plot this data.
+
+```{r fig.height=10, fig.width=12, echo=FALSE}
+ye_sentiment$album <- factor(ye_sentiment$album, levels= unique(kw_albums$album))
+ye_sentiment%>%
+      ggplot(aes(reorder(track_title, sentiment), sentiment, fill = album)) +
+      geom_col(show.legend = FALSE, width = 0.7) +
+      facet_wrap(~album, ncol= 3, scales = "free" )+
+      labs(x = NULL,
+           y = "Sentiment",
+           title = "Kanye West's songs ranked by sentiment",
+           caption = "")+
+      scale_y_continuous(name = "", limits = c(-100,50))+
+      theme_minimal()+
+      theme(axis.text.y = element_text(size = 4.5),
+            axis.text.x = element_text(size = 4.5),
+            strip.text = element_text(size = 6)
+            #axis.
+      )+
+      coord_flip()
+```
+
+If we take a look at the songs at each extreme 
+
+**Amazing** in the album **808's & Heartbreak**, which has
+the largest sentiment value in the positive direction.
+
+**So Appalled** in **My Beautiful Dark Twisted Fantasy** which has the largest sentiment
+value in the negative direction.
+
+We can see they both contain lyrics center around individual words.
+
+**Amazing**:
+```
+"And no matter what, you'll never take that from me
+My reign is as far as your eyes can see, it's amazing
+So amazing, so amazing, so amazing, it's amazing
+So amazing, so amazing, so amazing, it's amazing (Let's go)"
+```
+The repetition of this chorus happens multiple times in the song
+
+**So Appalled**: 
+```
+"I mean the shit is fuckin' ridiculous, fuckin' ridiculous
+I mean the shit is fuckin' ridiculous
+Five star dishes, different exotic fishes
+Man this shit is fuckin' ridiculous, fuckin' ridiculous"
+```
+The negative sentiment here is captured around the word ridiculous which is 
+repeated in the above chorus and also as a refrain by each rapper in the song. It is also captured by the use of profanity which is tagged as negative regardless of context.
+
+This lead us to start to unpack another issue with sentiment analysis which takes 
+overall sentiment as a summation of sentiment of individual words.
+The sentiment of So Appalled within context is a lot more nuanced than the analysis
+implies, *ridiculous* is essentially being used here as a way of exclaiming shock at the amount of money and fame the rappers possess.
+
+Another useful example of this lack of context is the song **Love Lockdown**
+``` {r, echo=FALSE}
+tidy_lyrics_tok%>%
+  filter(album == "808s & Heartbreak", track_n == 5)%>%
+  left_join(get_sentiments("bing"))
+```
+
+ThE words *loving* and *love* are tagged as positive but within the context of the
+lyrics below, you can see the problem with that interpretation:
+
+```
+I'm not loving you, the way I wanted to
+What I had to do, had to run from you
+I'm in love with you, but the vibe is wrong
+And that haunted me, all the way home
+```
+
+In order to increase the match rate of lyrics to the sentiment vocabulary.
+I combined the nrc and bing sets. nrc's 10 catergory can be eaisly binarised into 
+positive/negative e.g trust is positive and fear is negative.
+
+Combining both and after some deduplication we now have a vocabulary with **10252** words.
+
+```{r}
+head(combo)
+```
+
+With this new vocabulary we now have a mean match rate of **32%** and a median of **30%**
+
+
+
+Let's see what happens if we plot this new data.
+
+```{r fig.height=10, fig.width=12, echo=FALSE}
+ye_combo_sentiment <- tidy_lyrics_tok%>%
+  left_join(combo)%>% 
+  count(album, track_title, sentiment) %>%
+  spread(sentiment, n, fill = 0) %>%
+  mutate(sentiment = positive - negative)%>%
+  mutate(sentiment_per_word = (positive - negative)/(positive+negative))
+
+ye_combo_sentiment$album <- factor(ye_combo_sentiment$album, levels= unique(kw_albums$album))
+
+ye_combo_sentiment%>%
+      ggplot(aes(reorder(track_title, sentiment), sentiment, fill = album)) +
+      geom_col(show.legend = FALSE, width = 0.7) +
+      facet_wrap(~album, ncol= 3, scales = "free" )+
+      labs(x = NULL,
+           y = "Sentiment",
+           title = "Kanye West's songs ranked by sentiment",
+           caption = "")+
+      scale_y_continuous(name = "", limits = c(-100,50))+
+      theme_minimal()+
+      theme(axis.text.y = element_text(size = 4.5),
+            axis.text.x = element_text(size = 4.5),
+            strip.text = element_text(size = 6)
+            #axis.
+      )+
+      coord_flip()
+```
+
+Although this is more representative than the previous chart. The issue of context is still prevalent. Profane words are still being categorised as negative and the overall sentiment of a song  is not necessarily a summation of the individual sentiments of words.
+
+##Further Work
+
+The **sentimentr** package has built-in functionality for more nuanced sentiment scores that takes into account valence shifters, e.g. words that would negate something with positive or negative sentiment (‘I do **not** like it’).
+https://m-clark.github.io/text-analysis-with-R/sentiment-analysis.html
+
+Sentiment analysis is an ongoing research field that deploys vastly more complex techniques than the one presented here. One could consider the use of a supervised ML algorithm trained on product review text with corresponding rating values. 
+
+Understanding how humans evaluate sentiment when reading is also useful, identifying the subject of a sentence in order to evaluate how it is being viewed would move towards a more context based analysis.
+
