@@ -11,8 +11,8 @@ library(ggraph)
 library(tidytext)
 library(spotifyr)
 
-Sys.setenv(SPOTIFY_CLIENT_ID = 'f2871bb113694d308d1101411f093d0c')
-Sys.setenv(SPOTIFY_CLIENT_SECRET = '7b30fc88eac74b2c96903987f648d694')
+#Sys.setenv(SPOTIFY_CLIENT_ID = '')
+#Sys.setenv(SPOTIFY_CLIENT_SECRET = '')
 
 access_token <- get_spotify_access_token()
 
